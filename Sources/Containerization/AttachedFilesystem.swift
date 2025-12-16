@@ -16,6 +16,7 @@
 
 import ContainerizationExtras
 import ContainerizationOCI
+import Foundation
 
 /// A filesystem that was attached and able to be mounted inside the runtime environment.
 public struct AttachedFilesystem: Sendable {
@@ -53,3 +54,33 @@ public struct AttachedFilesystem: Sendable {
         self.options = options
     }
 }
+
+#if os(macOS)
+import ContainerizationEXT4
+import SystemPackage
+
+extension AttachedFilesystem {
+    static func writableOverlay(
+        at url: URL,
+        sizeBytes: UInt64
+    ) async throws -> AttachedFilesystem {
+
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: sizeBytes)
+        try handle.close()
+
+        let diskSize = max(sizeBytes, 256 * 1024)
+        let formatter = try EXT4.Formatter(FilePath(url.path), blockSize: 4096, minDiskSize: diskSize)
+        try formatter.close()
+
+        return AttachedFilesystem(
+            type: "ext4",
+            source: url.path,
+            destination: "",
+            options: []
+        )
+    }
+}
+#endif
